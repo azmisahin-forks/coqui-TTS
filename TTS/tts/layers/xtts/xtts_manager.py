@@ -2,7 +2,10 @@ import torch
 
 class SpeakerManager():
     def __init__(self, speaker_file_path=None):
-        self.speakers = torch.load(speaker_file_path)
+        if speaker_file_path:
+            self.speakers = torch.load(speaker_file_path, weights_only=False)
+        else:
+            self.speakers = {}
 
     @property
     def name_to_id(self):
