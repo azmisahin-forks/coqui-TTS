@@ -21,7 +21,7 @@ MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
 # Bu dosya, tüm konuşmaların ana sesi olacak. 
 # Yüksek kaliteli uzun (2-5 dk) ve gürültüsüz bir WAV dosyası
 
-REFERENCE_SPEAKER_WAV_PATH = "audio/reference_002.wav" # # 2 dakika uzunluğunda.
+REFERENCE_SPEAKER_WAV_PATH = "audio/reference_tr.wav"
 
 # --- Model Yükleme ---
 device = "cuda" if torch.cuda.is_available() else "cpu"
