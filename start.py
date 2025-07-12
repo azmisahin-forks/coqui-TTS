@@ -15,22 +15,19 @@ from flask import Flask, request, send_file, jsonify
 from waitress import serve
 import io
 import soundfile as sf
-import tempfile
+# tempfile'a artık ihtiyacımız yok
 from TTS.api import TTS
-
-# PyTorch güvenlik ayarları
-try:
-    from TTS.tts.configs.xtts_config import XttsConfig
-    from TTS.tts.models.xtts import XttsAudioConfig
-    torch.serialization.add_safe_globals([XttsConfig, XttsAudioConfig])
-except ImportError:
-    print("Uyarı: TTS kütüphanesinin eski bir sürümü kullanılıyor olabilir, güvenlik ayarları atlanıyor.")
-
 
 # --- Sunucu ve Model Yapılandırması ---
 HOST = "0.0.0.0"
 PORT = 5002
 MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
+
+# --- Referans Ses Dosyası Yolu ---
+# Buraya, kaliteli ve uzun referans ses dosyanızın yolunu belirtin.
+# Bu dosya, sunucunun çalıştırıldığı dizine göre göreceli veya mutlak bir yol olabilir.
+# ÖNEMLİ: Bu dosya sunucuyu çalıştırdığınız makinede/konteynerde olmalı.
+REFERENCE_SPEAKER_WAV_PATH = "audio/reference_001.wav" # Örneğin, `start.py`'nin yanındaki `audio` klasöründe.
 
 # --- Model Yükleme ---
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -43,13 +40,22 @@ except Exception as e:
     print(f"❌ Model yüklenirken kritik hata: {e}")
     exit()
 
+# --- Referans Sesi Kontrol Etme ve Yükleme ---
+# Sunucu başladığında referans ses dosyasının varlığını kontrol et
+if not os.path.exists(REFERENCE_SPEAKER_WAV_PATH):
+    print(f"❌ Hata: Referans ses dosyası bulunamadı: {REFERENCE_SPEAKER_WAV_PATH}")
+    print("Lütfen bu yola yüksek kaliteli ve uzun bir WAV dosyası yerleştirin (örn: 'audio/ana_ses.wav').")
+    exit()
+else:
+    print(f"✅ Referans ses dosyası yüklendi: {REFERENCE_SPEAKER_WAV_PATH}")
+
+
 # --- Web Sunucusu ---
 app = Flask(__name__)
 
-# YENİ: Healthcheck endpoint'i
+# YENİ: Healthcheck endpoint'i (mevcut)
 @app.route('/health', methods=['GET'])
 def health_check():
-    # Modelin yüklü ve kullanılabilir olduğunu kontrol et
     if tts:
         return jsonify({"status": "healthy", "model_loaded": True, "device": device}), 200
     else:
@@ -61,25 +67,23 @@ def text_to_speech():
         # POST isteğinden verileri al
         text = request.form.get('text', '')
         language = request.form.get('language', 'tr')
-        speed = float(request.form.get('speed', 1.50))
-        speaker_wav_file = request.files.get('speaker_ref_wav')
+        # Hız parametresini deneyerek en doğal olanı bulun. 1.0 başlangıç için iyidir.
+        # Bu değer, sizin klonladığınız sesin doğal konuşma hızına göre ayarlanmalı.
+        speed = float(request.form.get('speed', 1.0)) # Varsayılan 1.0'a çekildi.
 
         if not text:
             return jsonify({"error": "'text' parametresi gerekli."}), 400
-        if not speaker_wav_file:
-            return jsonify({"error": "POST isteği için 'speaker_ref_wav' dosyası gerekli."}), 400
-
-        # Gelen referans ses dosyasını geçici bir dosyaya kaydet
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as speaker_fp:
-            speaker_wav_path = speaker_fp.name
-            speaker_wav_file.save(speaker_wav_path)
-
-        print(f"İstek alındı: Hız={speed}, Metin='{text[:30]}...'")
         
-        # Sesi üret
+        # Kaldırılan kısım: speaker_ref_wav_file yükleme
+        # Artık her istekte referans ses dosyası yüklemeyeceğiz.
+        # Bunun yerine, yukarıda tanımladığımız sabit REFERENCE_SPEAKER_WAV_PATH'i kullanacağız.
+
+        print(f"İstek alındı: Hız={speed}, Metin='{text[:50]}...'")
+        
+        # Sesi üretirken sabit referans sesi kullan
         wav_chunks = tts.tts(
             text=text,
-            speaker_wav=speaker_wav_path,
+            speaker_wav=REFERENCE_SPEAKER_WAV_PATH, # BURAYI DEĞİŞTİRDİK!
             language=language,
             speed=speed
         )
@@ -91,7 +95,6 @@ def text_to_speech():
 
         print(f"✅ Ses başarıyla hafızada üretildi.")
         
-        # Hafızadaki ses verisini direkt olarak gönder
         return send_file(
             buffer, 
             mimetype='audio/wav',
@@ -106,9 +109,8 @@ def text_to_speech():
         return jsonify({"error": "Ses üretimi sırasında bir sunucu hatası oluştu."}), 500
     
     finally:
-        # Geçici referans ses dosyasını her durumda sil
-        if 'speaker_wav_path' in locals() and os.path.exists(speaker_wav_path):
-            os.remove(speaker_wav_path)
+        # Geçici referans ses dosyasını silmeye artık gerek yok.
+        pass # `if 'speaker_wav_path'` bloğu kaldırıldı.
 
 if __name__ == '__main__':
     print(f"🚀 Dağıtık Mimarili XTTS Sunucusu http://{HOST}:{PORT} adresinde çalışmaya hazır.")
