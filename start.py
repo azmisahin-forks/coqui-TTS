@@ -46,13 +46,22 @@ except Exception as e:
 # --- Web Sunucusu ---
 app = Flask(__name__)
 
+# YENİ: Healthcheck endpoint'i
+@app.route('/health', methods=['GET'])
+def health_check():
+    # Modelin yüklü ve kullanılabilir olduğunu kontrol et
+    if tts:
+        return jsonify({"status": "healthy", "model_loaded": True, "device": device}), 200
+    else:
+        return jsonify({"status": "unhealthy", "model_loaded": False, "reason": "TTS model not loaded"}), 503
+
 @app.route('/api/tts', methods=['POST'])
 def text_to_speech():
     try:
         # POST isteğinden verileri al
         text = request.form.get('text', '')
         language = request.form.get('language', 'tr')
-        speed = float(request.form.get('speed', 1.15))
+        speed = float(request.form.get('speed', 1.50))
         speaker_wav_file = request.files.get('speaker_ref_wav')
 
         if not text:
